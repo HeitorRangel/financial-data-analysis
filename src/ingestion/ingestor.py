@@ -67,7 +67,7 @@ def fetch_data(assets: List[str]) -> pd.DataFrame:
     for i in range(0, len(brapi_assets), tamanho_lote):
         lote_atual = brapi_assets[i:i + tamanho_lote]
         tickers_str = ','.join(lote_atual)
-        url = f"https://brapi.dev/api/quote/{tickers_str}?range=1d&interval=1m"
+        url = f"https://brapi.dev/api/quote/{tickers_str}?range=3mo&interval=1d"
         
         if token:
             url += f"&token={token}"

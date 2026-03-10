@@ -107,21 +107,27 @@ def main():
     min_date = df['Datetime'].min().date()
     max_date = df['Datetime'].max().date()
     
-    selected_date = st.sidebar.date_input(
-        "Select Date",
-        value=max_date,
+    date_range = st.sidebar.date_input(
+        "Select Date Range",
+        value=(min_date, max_date),
         min_value=min_date,
         max_value=max_date
     )
 
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        start_date, end_date = date_range
+    else:
+        start_date = end_date = date_range[0] if isinstance(date_range, tuple) else date_range
+
     # Filter Data
     filtered_df = df[
         (df['Ticker'] == selected_asset) & 
-        (df['Datetime'].dt.date == selected_date)
+        (df['Datetime'].dt.date >= start_date) &
+        (df['Datetime'].dt.date <= end_date)
     ].sort_values('Datetime')
 
     if filtered_df.empty:
-        st.warning(f"No data found for {selected_asset} on {selected_date}.")
+        st.warning(f"No data found for {selected_asset} in the selected period.")
         return
 
     # Calculate Moving Average (20 periods)
@@ -148,7 +154,7 @@ def main():
         filtered_df, 
         x='Datetime', 
         y=['Close', 'SMA 20'], 
-        title=f'{selected_asset} - Intraday Price',
+        title=f'{selected_asset} - Historical Price',
         template='plotly_white',
         color_discrete_map={'Close': '#1f77b4', 'SMA 20': '#ff7f0e'}
     )
