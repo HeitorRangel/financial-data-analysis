@@ -28,6 +28,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+def classificar_ativo(ticker):
+    """Classifica o tipo de ativo baseado no sufixo do código B3."""
+    if ticker.endswith('34') or ticker.endswith('35'):
+        return 'BDR (Internacional)'
+    elif ticker.endswith('11'):
+        return 'FII / ETF'
+    elif ticker.endswith('3') or ticker.endswith('4') or ticker.endswith('5') or ticker.endswith('6'):
+        return 'Ação (Nacional)'
+    else:
+        return 'Outros'
+
 @st.cache_data(ttl=60)
 def load_data(path: str) -> pd.DataFrame:
     """
@@ -44,6 +55,10 @@ def load_data(path: str) -> pd.DataFrame:
         # Ensure Datetime is datetime type
         if 'Datetime' in df.columns:
             df['Datetime'] = pd.to_datetime(df['Datetime'])
+            
+        # Add Asset Classification
+        if 'Ticker' in df.columns:
+            df['Tipo de Ativo'] = df['Ticker'].apply(classificar_ativo)
         
         return df
     except Exception as e:
@@ -67,8 +82,25 @@ def main():
     # Sidebar Filters
     st.sidebar.header("Filters")
     
-    # Asset Filter
-    available_assets = sorted(df['Ticker'].unique())
+    # Asset Categorization Filter
+    if 'Tipo de Ativo' in df.columns:
+        tipos_disponiveis = sorted(df['Tipo de Ativo'].unique())
+        tipo_selecionado = st.sidebar.multiselect(
+            "Select Asset Type", 
+            tipos_disponiveis, 
+            default=tipos_disponiveis
+        )
+        # Filter dataframe base
+        df_filtrado_tipo = df[df['Tipo de Ativo'].isin(tipo_selecionado)]
+    else:
+        df_filtrado_tipo = df
+
+    # Asset Filter (now dependent on the type selected above)
+    if not df_filtrado_tipo.empty:
+        available_assets = sorted(df_filtrado_tipo['Ticker'].unique())
+    else:
+        available_assets = []
+        
     selected_asset = st.sidebar.selectbox("Select Asset", available_assets)
 
     # Date Filter
