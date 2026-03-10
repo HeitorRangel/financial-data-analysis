@@ -6,7 +6,6 @@ from typing import List, Optional
 
 import pandas as pd
 import requests
-import yfinance as yf
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -28,13 +27,22 @@ logger = logging.getLogger(__name__)
 
 def fetch_data(assets: List[str]) -> pd.DataFrame:
     """
-    Fetches the latest market data for the given assets.
+    Fetches the latest market data for the given assets using Brapi API.
     """
     if not assets:
         logger.warning("No assets defined for ingestion. Check your .env file.")
         return pd.DataFrame()
 
-    logger.info("Iniciando coleta...")
+    logger.info("Iniciando coleta via Brapi...")
+    
+    # Brapi não utiliza o sufixo '.SA', então o removemos para a requisição
+    brapi_assets = [asset.replace('.SA', '') for asset in assets]
+    tickers_str = ','.join(brapi_assets)
+    url = f"https://brapi.dev/api/quote/{tickers_str}?range=1d&interval=1m"
+    
+    token = os.getenv("BRAPI_TOKEN", "")
+    if token:
+        url += f"&token={token}"
     
     # CRIANDO UMA SESSÃO DISFARÇADA DE NAVEGADOR (CHROME)
     session = requests.Session()
@@ -43,20 +51,37 @@ def fetch_data(assets: List[str]) -> pd.DataFrame:
     })
 
     try:
-        # Passamos a "session" como parâmetro extra
-        data = yf.download(assets, period='1d', interval='1m', progress=False, session=session)
+        response = session.get(url, timeout=15)
+        response.raise_for_status()
+        data = response.json()
         
-        if data.empty:
-            logger.warning("No data returned from API.")
+        if 'error' in data:
+            logger.error(f"Brapi returned an error: {data['error']}")
             return pd.DataFrame()
 
-        try:
-            df_close = data['Close']
-        except KeyError:
-            logger.error("Column 'Close' not found in API response.")
+        records = []
+        if 'results' in data:
+            for result in data['results']:
+                # The symbol from Brapi is without .SA, let's find the original to maintain compatibility
+                symbol = result.get('symbol', '')
+                original_asset = next((a for a in assets if a.replace('.SA', '') == symbol), symbol)
+                
+                historical_data = result.get('historicalDataPrice', [])
+                for item in historical_data:
+                    records.append({
+                        'Datetime': pd.to_datetime(item['date'], unit='s', utc=True).tz_convert('America/Sao_Paulo').tz_localize(None),
+                        'Ticker': original_asset,
+                        'Close': item['close']
+                    })
+        
+        df = pd.DataFrame(records)
+        if df.empty:
+            logger.warning("No historical data returned from Brapi API.")
             return pd.DataFrame()
             
-        return df_close
+        # Transform the dataframe to have 'Datetime' as index and 'Ticker' as columns, matching the previous yfinance structure
+        df_pivot = df.pivot_table(index='Datetime', columns='Ticker', values='Close')
+        return df_pivot
 
     except Exception as e:
         logger.error(f"Error fetching data: {e}")
