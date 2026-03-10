@@ -25,6 +25,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def is_market_open() -> bool:
+    """
+    Verifica se a B3 (Bolsa de Valores do Brasil) está aberta.
+    Considera dias úteis (segunda a sexta) e horário das 10h às 18h (Brasília).
+    """
+    now = pd.Timestamp.now('America/Sao_Paulo')
+    
+    # Verifica se é fim de semana (5 = Sábado, 6 = Domingo)
+    if now.weekday() >= 5:
+        return False
+        
+    # Verifica se está no horário comercial (10h às 18h)
+    if 10 <= now.hour < 18:
+        return True
+        
+    return False
+
 def fetch_data(assets: List[str]) -> pd.DataFrame:
     """
     Fetches the latest market data for the given assets using Brapi API.
@@ -158,6 +175,11 @@ def main():
     
     while True:
         try:
+            if not is_market_open():
+                logger.info("Mercado fechado (fora do horário comercial ou fim de semana). Aguardando próximo ciclo...")
+                time.sleep(INTERVAL_SECONDS)
+                continue
+
             logger.info("Fetching market data...")
             df_raw = fetch_data(ASSETS)
             
