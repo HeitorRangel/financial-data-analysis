@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  ingestor:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingestor
+    container_name: financial_ingestor
+    env_file:
+      - .env
+    volumes:
+      - datalake_data:/app/datalake
+    restart: always
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: financial_dashboard
+    env_file:
+      - .env
+    ports:
+      - "8501:8501"
+    volumes:
+      - datalake_data:/app/datalake
+    restart: always
+    depends_on:
+      - ingestor
+
+volumes:
+  datalake_data:

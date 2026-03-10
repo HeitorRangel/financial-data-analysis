@@ -1,0 +1,14 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code
+COPY src/ingestion /app/src/ingestion
+
+# Set Python path to find modules if needed, and run ingestor
+ENV PYTHONPATH=/app
+CMD ["python", "src/ingestion/ingestor.py"]

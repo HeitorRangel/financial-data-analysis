@@ -1,9 +1,25 @@
-import datetime
 import os
+import logging
+import datetime
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Configuration from .env
+DATA_PATH = os.getenv("BASE_PATH", "datalake")
+
+# Logging setup for Streamlit
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 # Page Configuration
 st.set_page_config(
@@ -12,9 +28,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Constants
-DATA_PATH = "datalake"
-
 @st.cache_data(ttl=60)
 def load_data(path: str) -> pd.DataFrame:
     """
@@ -22,8 +35,8 @@ def load_data(path: str) -> pd.DataFrame:
     Uses caching to improve performance.
     """
     try:
-        # Load the dataset using pyarrow engine for better performance with partitioned data
         if not os.path.exists(path):
+            logger.warning(f"Data Lake path not found: {path}")
             return pd.DataFrame()
             
         df = pd.read_parquet(path, engine='fastparquet')
@@ -34,16 +47,15 @@ def load_data(path: str) -> pd.DataFrame:
         
         return df
     except Exception as e:
+        logger.error(f"Error loading data: {e}")
         st.error(f"Error loading data: {e}")
         return pd.DataFrame()
 
 def main():
     st.title("Financial Market Data Analysis")
 
-    # Load Data
-    import os
     if not os.path.exists(DATA_PATH):
-        st.warning("Data Lake directory not found. Please run the ingestor script first.")
+        st.warning("Data Lake directory not found. Please wait for the ingestor script to generate data.")
         return
 
     df = load_data(DATA_PATH)

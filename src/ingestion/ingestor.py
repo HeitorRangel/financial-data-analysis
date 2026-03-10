@@ -6,21 +6,16 @@ from typing import List, Optional
 
 import pandas as pd
 import yfinance as yf
+from dotenv import load_dotenv
 
-# Configuration
-ASSETS: List[str] = [
-    'HGLG11.SA', 'KNRI11.SA', 'MXRF11.SA', 'XPML11.SA', 'VISC11.SA',
-    'ALZR11.SA', 'HGRU11.SA', 'BTLG11.SA', 'XPLG11.SA', 
-    'CPTS11.SA', 'RECR11.SA', 'VGHF11.SA', 'KNCR11.SA', 
-    'PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'BBAS3.SA',
-    'WEGE3.SA', 'ABEV3.SA', 'B3SA3.SA', 'RENT3.SA',
-    'SUZB3.SA', 'GGBR4.SA', 'VIVT3.SA', 'PRIO3.SA',
-    'BOVA11.SA', 'IVVB11.SA', 'SMAL11.SA', 'HASH11.SA', 'NASD11.SA',
-    'XINA11.SA', 'GOLD11.SA', 'AAPL34.SA', 'MSFT34.SA',
-    'NVDC34.SA', 'AMZO34.SA', 'GOGL34.SA', 'TSLA34.SA', 'MELI34.SA'
-]
-INTERVAL_SECONDS: int = 120  # 2 minutes
-BASE_PATH: str = "datalake"
+# Load environment variables
+load_dotenv()
+
+# Configuration from .env
+ASSETS_ENV_STR = os.getenv("ASSETS", "")
+ASSETS: List[str] = [asset.strip() for asset in ASSETS_ENV_STR.split(",")] if ASSETS_ENV_STR else []
+INTERVAL_SECONDS: int = int(os.getenv("INTERVAL_SECONDS", "120"))
+BASE_PATH: str = os.getenv("BASE_PATH", "datalake")
 
 # Logging setup
 logging.basicConfig(
@@ -34,15 +29,17 @@ def fetch_data(assets: List[str]) -> pd.DataFrame:
     """
     Fetches the latest market data for the given assets.
     """
+    if not assets:
+        logger.warning("No assets defined for ingestion. Check your .env file.")
+        return pd.DataFrame()
+
     try:
-        # Download data for all assets at once
         data = yf.download(assets, period='1d', interval='1m', progress=False)
         
         if data.empty:
             logger.warning("No data returned from API.")
             return pd.DataFrame()
 
-        # Extract Close prices
         try:
             df_close = data['Close']
         except KeyError:
@@ -63,7 +60,6 @@ def process_data(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     try:
-        # Ensure index name for resetting
         df.index.name = 'Datetime'
         df_reset = df.reset_index()
 
@@ -71,17 +67,14 @@ def process_data(df: pd.DataFrame) -> pd.DataFrame:
             logger.error("Datetime column missing after reset_index.")
             return pd.DataFrame()
 
-        # Melt DataFrame to Tidy format
         df_melted = df_reset.melt(
             id_vars=['Datetime'], 
             var_name='Ticker', 
             value_name='Close'
         )
 
-        # Drop rows with NaN values (failed downloads)
         df_melted = df_melted.dropna(subset=['Close'])
 
-        # Add partition columns
         df_melted['ano'] = df_melted['Datetime'].dt.year
         df_melted['mes'] = df_melted['Datetime'].dt.month
         df_melted['dia'] = df_melted['Datetime'].dt.day
@@ -101,11 +94,7 @@ def save_to_datalake(df: pd.DataFrame, base_path: str) -> None:
 
     try:
         current_time = datetime.datetime.now()
-        filename = f"market_data_{current_time.strftime('%H%M%S')}.parquet"
-        
-        # Ensure the directory exists is handled by partition_cols, 
-        # but to_parquet might need the base directory locally if completely empty, 
-        # usually fastparquet handles it.
+        os.makedirs(base_path, exist_ok=True)
         
         df.to_parquet(
             path=base_path,
