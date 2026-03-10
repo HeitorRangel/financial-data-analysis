@@ -5,6 +5,7 @@ import logging
 from typing import List, Optional
 
 import pandas as pd
+import requests
 import yfinance as yf
 from dotenv import load_dotenv
 
@@ -33,8 +34,17 @@ def fetch_data(assets: List[str]) -> pd.DataFrame:
         logger.warning("No assets defined for ingestion. Check your .env file.")
         return pd.DataFrame()
 
+    logger.info("Iniciando coleta...")
+    
+    # CRIANDO UMA SESSÃO DISFARÇADA DE NAVEGADOR (CHROME)
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    })
+
     try:
-        data = yf.download(assets, period='1d', interval='1m', progress=False)
+        # Passamos a "session" como parâmetro extra
+        data = yf.download(assets, period='1d', interval='1m', progress=False, session=session)
         
         if data.empty:
             logger.warning("No data returned from API.")
