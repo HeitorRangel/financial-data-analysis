@@ -14,7 +14,7 @@ load_dotenv()
 # Configuration from .env
 ASSETS_ENV_STR = os.getenv("ASSETS", "")
 ASSETS: List[str] = [asset.strip() for asset in ASSETS_ENV_STR.split(",")] if ASSETS_ENV_STR else []
-INTERVAL_SECONDS: int = int(os.getenv("INTERVAL_SECONDS", "120"))
+INTERVAL_SECONDS: int = int(os.getenv("INTERVAL_SECONDS", "3600"))
 BASE_PATH: str = os.getenv("BASE_PATH", "datalake")
 
 # Logging setup
@@ -44,7 +44,7 @@ def fetch_data(assets: List[str]) -> pd.DataFrame:
     })
     
     token = os.getenv("BRAPI_TOKEN", "")
-    tamanho_lote = 10
+    tamanho_lote = 1 # Restrição da API Brapi Free (1 ativo por requisição)
     records = []
 
     for i in range(0, len(brapi_assets), tamanho_lote):
