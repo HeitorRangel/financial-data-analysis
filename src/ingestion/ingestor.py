@@ -35,57 +35,66 @@ def fetch_data(assets: List[str]) -> pd.DataFrame:
 
     logger.info("Iniciando coleta via Brapi...")
     
-    # Brapi não utiliza o sufixo '.SA', então o removemos para a requisição
     brapi_assets = [asset.replace('.SA', '') for asset in assets]
-    tickers_str = ','.join(brapi_assets)
-    url = f"https://brapi.dev/api/quote/{tickers_str}?range=1d&interval=1m"
-    
-    token = os.getenv("BRAPI_TOKEN", "")
-    if token:
-        url += f"&token={token}"
     
     # CRIANDO UMA SESSÃO DISFARÇADA DE NAVEGADOR (CHROME)
     session = requests.Session()
     session.headers.update({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     })
+    
+    token = os.getenv("BRAPI_TOKEN", "")
+    tamanho_lote = 10
+    records = []
 
-    try:
-        response = session.get(url, timeout=15)
-        response.raise_for_status()
-        data = response.json()
+    for i in range(0, len(brapi_assets), tamanho_lote):
+        lote_atual = brapi_assets[i:i + tamanho_lote]
+        tickers_str = ','.join(lote_atual)
+        url = f"https://brapi.dev/api/quote/{tickers_str}?range=1d&interval=1m"
         
-        if 'error' in data:
-            logger.error(f"Brapi returned an error: {data['error']}")
-            return pd.DataFrame()
+        if token:
+            url += f"&token={token}"
 
-        records = []
-        if 'results' in data:
-            for result in data['results']:
-                # The symbol from Brapi is without .SA, let's find the original to maintain compatibility
-                symbol = result.get('symbol', '')
-                original_asset = next((a for a in assets if a.replace('.SA', '') == symbol), symbol)
-                
-                historical_data = result.get('historicalDataPrice', [])
-                for item in historical_data:
-                    records.append({
-                        'Datetime': pd.to_datetime(item['date'], unit='s', utc=True).tz_convert('America/Sao_Paulo').tz_localize(None),
-                        'Ticker': original_asset,
-                        'Close': item['close']
-                    })
-        
-        df = pd.DataFrame(records)
-        if df.empty:
-            logger.warning("No historical data returned from Brapi API.")
-            return pd.DataFrame()
+        try:
+            response = session.get(url, timeout=15)
             
-        # Transform the dataframe to have 'Datetime' as index and 'Ticker' as columns, matching the previous yfinance structure
-        df_pivot = df.pivot_table(index='Datetime', columns='Ticker', values='Close')
-        return df_pivot
+            if response.status_code == 200:
+                data = response.json()
+                
+                if 'error' in data:
+                    logger.error(f"Brapi returned an error for batch {tickers_str}: {data['error']}")
+                    continue
 
-    except Exception as e:
-        logger.error(f"Error fetching data: {e}")
+                if 'results' in data:
+                    for result in data['results']:
+                        # The symbol from Brapi is without .SA, let's find the original to maintain compatibility
+                        symbol = result.get('symbol', '')
+                        original_asset = next((a for a in assets if a.replace('.SA', '') == symbol), symbol)
+                        
+                        historical_data = result.get('historicalDataPrice', [])
+                        for item in historical_data:
+                            records.append({
+                                'Datetime': pd.to_datetime(item['date'], unit='s', utc=True).tz_convert('America/Sao_Paulo').tz_localize(None),
+                                'Ticker': original_asset,
+                                'Close': item['close']
+                            })
+            else:
+                logger.error(f"Error in batch {tickers_str}: HTTP {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"Connection failure fetching batch {tickers_str}: {e}")
+            
+        # Rate Limiting: Pause between batches to avoid spam blocking
+        time.sleep(2)
+
+    df = pd.DataFrame(records)
+    if df.empty:
+        logger.warning("No historical data returned from Brapi API.")
         return pd.DataFrame()
+        
+    # Transform the dataframe to have 'Datetime' as index and 'Ticker' as columns, matching the previous yfinance structure
+    df_pivot = df.pivot_table(index='Datetime', columns='Ticker', values='Close')
+    return df_pivot
 
 def process_data(df: pd.DataFrame) -> pd.DataFrame:
     """
